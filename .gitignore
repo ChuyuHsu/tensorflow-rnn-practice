@@ -2,3 +2,5 @@
 *.gz
 *.pyc
 *.sw*
+.DS_Store
+.ropeproject
