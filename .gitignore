@@ -4,3 +4,4 @@
 *.sw*
 .DS_Store
 .ropeproject
+.ipynb_checkpoints
