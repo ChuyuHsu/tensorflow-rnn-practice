@@ -175,11 +175,43 @@ with tf.variable_scope("full_connect"):
 
     outputs = tf.reshape(outputs, shape=[-1, embedding_size])
 
+
+def create_boolean_mask(lengths, num_rows, mask_length):
+    """
+    > [4, 3, 5, 2] to
+    > [[1,1,1,1,0,0,0,0],
+    >  [1,1,1,0,0,0,0,0],
+    >  [1,1,1,1,1,0,0,0],
+    >  [1,1,0,0,0,0,0,0]
+    > ]
+    """
+    # Make a 4 x 8 matrix where each row contains the length repeated 8 times.
+    lengths_transposed = tf.expand_dims(lengths, 1)
+    lengths_tiled = tf.tile(lengths_transposed, [1, mask_length])
+
+    # Make a 4 x 8 matrix where each row contains [0, 1, ..., 7]
+    range = tf.range(0, mask_length, 1)
+    range_row = tf.expand_dims(range, 0)
+    range_tiled = tf.tile(range_row, [num_rows, 1])
+
+    # Use the logical operations to create a mask
+    mask = tf.less(range_tiled, lengths_tiled)
+
+    return mask
+
+
 with tf.variable_scope("loss"):
     all_outputs = tf.matmul(outputs, W_o) + b_o
     all_answers = tf.reshape(input_y, shape=[-1, nclasses])
 
-    losses = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(all_outputs, all_answers))
+    mask = create_boolean_mask(sequence_length, batch_size, max_sentence_length)
+    mask = tf.reshape(mask, shape=[-1,])
+    print(mask.get_shape())
+
+    sub_outputs = tf.boolean_mask(all_outputs, mask)
+    sub_answers = tf.boolean_mask(all_answers, mask)
+    # pdb.set_trace()
+    losses = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(sub_outputs, sub_answers))
 
 
 # In[16]:
@@ -231,9 +263,9 @@ with tf.Session() as sess:
                 sequence_length: sl
             }
 
-            print(X.shape)
-            print(y.shape)
-            print(sl)
+            # print(X.shape)
+            # print(y.shape)
+            # print(sl)
             sess.run(optimizer, feed_dict=train_dict)   #perform an update on the parameters
 
             #create validation dictionary
@@ -245,13 +277,14 @@ with tf.Session() as sess:
             outputs, c_val = sess.run([all_outputs, losses], feed_dict=test_dict)            #compute the cost on the validation set
             print("Validation cost: {}, on Epoch {}".format(c_val, k))
 
-            if k >= 0:
+            if k >= 10:
+                sl = sl_test[0]
                 pred_1st = np.argmax(outputs[::max_sentence_length], axis=1)
-                pred_1st = [idx2label.get(i) for i in pred_1st]
+                pred_1st = [idx2label.get(i) for i in pred_1st][:sl]
 
-                word_1st = [idx2word.get(i) for i in X_test[0]]
+                word_1st = [idx2word.get(i) for i in X_test[0]][:sl]
                 y_1st = np.argmax(y_test[0], axis=1)
-                y_1st = [idx2label.get(i) for i in y_1st]
+                y_1st = [idx2label.get(i) for i in y_1st][:sl]
                 # pdb.set_trace()
                 wlength = 7
                 for w, a, p in zip(word_1st, y_1st, pred_1st):
